@@ -17,6 +17,8 @@
 
 //this code is now incomplete,dont touch.
 
+//i not work to some day to forgot all.lol.
+
 class WinSockCaller {
 public:
 	int Call() {
