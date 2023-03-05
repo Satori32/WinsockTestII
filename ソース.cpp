@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <tuple>
 
 #include <algorithm>
 
@@ -44,11 +45,16 @@ protected:
 class TCP_Client {
 public:
 	TCP_Client() {}
-	TCP_Client(const char* hostname, const std::uint16_t& Port) { Connect(hostname, Port); }
+	TCP_Client(unsigned long IP, const std::uint16_t& Port) { if (Connect(IP, Port) == SOCKET_ERROR) { closesocket(S); S = INVALID_SOCKET; return; }; }
 	virtual ~TCP_Client() {
 		if (S != INVALID_SOCKET) { DisConnect(); }
+		return;
 	}
-
+	
+	bool IsConnected() {
+		return S != INVALID_SOCKET;
+	}
+	/** /
 	SOCKET Connect(const char* HOSTNAME, const std::uint16_t& Port) {
 		ADDRINFO AF = { 0, };
 
@@ -83,18 +89,24 @@ public:
 		S = Z;
 		return Z;
 	}
-	/** /
-	int Connect(const char* IP, std::uint16_t Port) {//IPv4 cliant??
-		A.sin_addr.S_un.S_addr = inet_addr(IP);
+	/**/
+	int Connect(unsigned long IP, std::uint16_t Port) {//IPv4 cliant??
+		S = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (S == INVALID_SOCKET) { return SOCKET_ERROR; }
+		A.sin_addr.S_un.S_addr = IP;
 		A.sin_family = AF_INET;
 		A.sin_port = htons(Port);
-		return  connect(S, (SOCKADDR*)&A, sizeof(A));
+		int R = connect(S, (SOCKADDR*)&A, sizeof(A));
+		if (R == SOCKET_ERROR) { closesocket(S); S = INVALID_SOCKET; return R; }
+		return  R;
 	}
 	int Connect(const SOCKADDR_IN& In) {//IPv4 cliant??
-		int X = connect(S, (SOCKADDR*)&In, sizeof(In));
-		if (X == SOCKET_ERROR) { if (LastError() != WSAEWOULDBLOCK) { return SOCKET_ERROR; } }
+		S = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (S == INVALID_SOCKET) { return SOCKET_ERROR; }
+		int R = connect(S, (SOCKADDR*)&In, sizeof(In));
+		if (R == SOCKET_ERROR) { closesocket(S); S = INVALID_SOCKET; return R; }
 		A = In;
-		return X;
+		return R;
 	}
 	/**/
 	int Write(const std::vector<char>& In) {
@@ -108,7 +120,7 @@ public:
 
 	std::vector<char> Read() {
 
-		static const int L = 65000;
+		static const int L = (1<<15)-1;
 		char D[L] = { 0, };
 
 		int S = sizeof(A);
@@ -119,7 +131,8 @@ public:
 
 		while (R = recv(S, D, L, 0)) {
 		//while (R = recvfrom(S, D, L, 0, (SOCKADDR*)&A, &S)) {
-			RR.insert(RR.end(), D, D+R);//min provide by windows. yes i know STL Have too.but it is confrict. 
+			if (R == SOCKET_ERROR) { break; }
+			RR.insert(RR.end(), D, D+R);
 		}
 
 		return RR;
@@ -140,13 +153,7 @@ public:
 		return closesocket(X);
 	}
 
-	int LastError() {
-		return WSAGetLastError();
-	}
 
-	int FormatError() {
-		return FormatError();
-	}
 
 protected:
 	SOCKET S = INVALID_SOCKET;
@@ -165,13 +172,32 @@ SOCKADDR_IN MakeSOCKADDER(short F, unsigned char A, unsigned char B, unsigned ch
 
 	return R;
 }
+std::vector<std::tuple<std::string, unsigned long>>  GetIPByName(const char* Name) {
+	LPHOSTENT LHT = gethostbyname(Name);
+	if (LHT == nullptr)return{};
+	if (LHT->h_addrtype != AF_INET) { return {}; }
 
+	std::vector<std::tuple<std::string, unsigned long>> IPs;
+
+	SOCKADDR_IN A;
+
+	for (std::size_t i = 0; LHT->h_addr_list[i]; i++) {
+		A.sin_addr.S_un.S_addr = *(u_long*)LHT->h_addr_list[i];
+
+		IPs.push_back({ {(LHT->h_addr_list[i])}, A.sin_addr.S_un.S_addr });
+	}
+
+	return IPs;
+}
 
 int main() {
 	WinSockCaller WS;
 	if (WS.Call() != 0) { return -1; }
 
-	const char* HN = "www.google.co.jp";
+	const char* HN1 = "www.google.co.jp";
+	const char* HN2 = "localhost.";
+
+	const char Mess[] = "Disconnect!";
 /** /
 	LPHOSTENT LHT = gethostbyname(HN);
 
@@ -186,18 +212,31 @@ int main() {
 	Q = MakeSOCKADDER(AF_INET,(std::uint8_t)(*LHT->h_addr_list)[0],(std::uint8_t)(*LHT->h_addr_list)[1],(std::uint8_t)(*LHT->h_addr_list)[2],(std::uint8_t)(*LHT->h_addr_list)[3],27915);
 
 /**/
+
+	auto A = GetIPByName(HN2);
+	u_short Po = 27015;
 	
 	TCP_Client TC;
-	if (TC.Connect(HN, 27015) == INVALID_SOCKET) { std::cout << TC.LastError() << std::endl; return -1; }
+	if (TC.Connect(std::get<1>(A[0]), Po) == SOCKET_ERROR) { std::cout << WSAGetLastError() << std::endl; return -1; }
 	//if(TC.Connect(Q) == SOCKET_ERROR) { std::cout << TC.LastError() << std::endl; return -1; }
 
-	std::this_thread::sleep_for(std::chrono::seconds(4));
+	while (TC.IsConnected()) {
 
-	auto R = TC.Read();
-	auto W = TC.Write("DISCONNECT!", sizeof("DISCONNECT!"));
+		std::this_thread::sleep_for(std::chrono::seconds(4));
 
+		auto R = TC.Read();
+		R.push_back('\0');
+		std::string SS = R.data();
+		std::cout << "Echo:" << SS << std::endl;
+		std::cin >> SS;
+		TC.Write({ SS.begin(),SS.end() });
+	}
 
 	TC.DisConnect();
+
+	std::cout << WSAGetLastError() << std::endl; 
+	
+	return 0;
 
 }
 
