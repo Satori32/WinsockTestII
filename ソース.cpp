@@ -215,21 +215,25 @@ int main() {
 
 	auto A = GetIPByName(HN2);
 	u_short Po = 27015;
-	
+	std::cout << "Start TCP Client!" << std::endl;
 	TCP_Client TC;
 	if (TC.Connect(std::get<1>(A[0]), Po) == SOCKET_ERROR) { std::cout << WSAGetLastError() << std::endl; return -1; }
 	//if(TC.Connect(Q) == SOCKET_ERROR) { std::cout << TC.LastError() << std::endl; return -1; }
+	std::string SS;
+
+	std::cout << "Start Loop!" << std::endl;
 
 	while (TC.IsConnected()) {
 
-		std::this_thread::sleep_for(std::chrono::seconds(4));
+		//std::this_thread::sleep_for(std::chrono::seconds(4));
+		std::cin >> SS;
+		TC.Write({ SS.begin(),SS.end() });
 
 		auto R = TC.Read();
 		R.push_back('\0');
 		std::string SS = R.data();
 		std::cout << "Echo:" << SS << std::endl;
-		std::cin >> SS;
-		TC.Write({ SS.begin(),SS.end() });
+
 	}
 
 	TC.DisConnect();
