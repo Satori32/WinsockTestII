@@ -13,6 +13,8 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 
+#include <conio.h>
+
 #pragma comment(lib,"ws2_32.lib")
 #pragma warning(disable : 4996)
 
@@ -117,19 +119,20 @@ public:
 		return send(S, In, L, 0 );
 		//return send(S, In, L, 0, (SOCKADDR*)&A, sizeof(A));
 	}
-
+	/** /
 	std::vector<char> Read() {
 
 		static const int L = (1<<15)-1;
 		char D[L] = { 0, };
 
-		int S = sizeof(A);
+		//int L = sizeof(A);
 
 		int R = -1;
 
 		std::vector<char> RR;
-
-		while (R = recv(S, D, L, 0)) {
+		
+		while ((R = recv(S, D, 1, MSG_PEEK))!=SOCKET_ERROR) {//if buffer empty to any way to block process
+			R = recv(S, D, L, 0);
 		//while (R = recvfrom(S, D, L, 0, (SOCKADDR*)&A, &S)) {
 			if (R == SOCKET_ERROR) { break; }
 			RR.insert(RR.end(), D, D+R);
@@ -137,8 +140,9 @@ public:
 
 		return RR;
 	}
+	/**/
 	int Read(char* Buf,std::size_t L) {
-		int S = sizeof(A);
+		//int L = sizeof(A);
 		return recv(S, Buf, L, 0);
 		//return recvfrom(S, Buf, L, 0, (SOCKADDR*)&A, &S);
 	}
@@ -190,6 +194,17 @@ std::vector<std::tuple<std::string, unsigned long>>  GetIPByName(const char* Nam
 	return IPs;
 }
 
+int KeyIn() {
+
+	int K = 0;
+
+	if (_kbhit() != 0) {
+		K = _getch();
+	}
+
+	return K;
+}
+
 int main() {
 	WinSockCaller WS;
 	if (WS.Call() != 0) { return -1; }
@@ -223,17 +238,28 @@ int main() {
 
 	std::cout << "Start Loop!" << std::endl;
 
+
+
 	while (TC.IsConnected()) {
 
+
 		//std::this_thread::sleep_for(std::chrono::seconds(4));
+		std::cout << "Send:";
+
+		SS.clear();
 		std::cin >> SS;
+		SS += '\0';
 		TC.Write({ SS.begin(),SS.end() });
 
-		auto R = TC.Read();
-		R.push_back('\0');
-		std::string SS = R.data();
-		std::cout << "Echo:" << SS << std::endl;
+		const std::size_t L = (1 << 15)-1;
+		char C[L] = { '\0', };
 
+		int R = TC.Read(C, L);
+		C[R] = '\0';
+		//auto R = TC.Read();
+		std::cout << "Echo:" << std::string(C,C+min(R,L)) << std::endl;
+		int K = KeyIn();
+		if (K == 27) { break; }
 	}
 
 	TC.DisConnect();
